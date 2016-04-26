@@ -1,4 +1,4 @@
-## Predix Mobile iOS Example - Rapid On-device WebApp Interations
+## Predix Mobile iOS Example - Rapid On-device WebApp Iterations
 
 While developing Predix Mobile WebApps sometimes developers want to use a device rather than the simulator. Additionally, they may want to update thier WebApp directly on-device rather than go through "pm publish", pushing their changes through couchbase and restarting the app with each change.
 
