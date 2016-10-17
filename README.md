@@ -5,6 +5,12 @@ While developing Predix Mobile WebApps sometimes developers want to use a device
 The code in this repository is a class that, when configured properly in a Predix Mobile iOS Container will allow a developer to use iTunes File Sharing to drop a folder containing updates to a WebApp and have those updates replace their currently running WebApp without publishing it with the pm tool.
 
 **--> Warning**: It is not recommended to leave this code in production system. Doing so would represent a serious risk. This code should be considered for development only, and you should take steps to ensure this code will not find it's way into a production system.
+### Before you begin
+To get started, follow this documentation:
+* [Get Started with the Mobile Service and Mobile SDK] (https://www.predix.io/docs#rae4EfJ6) 
+* [Running the Predix Mobile Sample App] (https://www.predix.io/docs#EGUzWwcC)
+* [Creating a Mobile Hello World Webapp] (https://www.predix.io/docs#DrBWuHkl) 
+
 
 ### Step 1:
 
