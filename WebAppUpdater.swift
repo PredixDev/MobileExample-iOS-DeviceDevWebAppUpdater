@@ -21,25 +21,25 @@ import PredixMobileSDK
 internal class WebAppUpdater
 {
     internal static let AppDocumentDirectoryFilesChangedNotification = "AppDocumentDirectoryFilesChangedNotification"
-    private var source : dispatch_source_t!
-    private var filesChangedObserver : NSObjectProtocol?
-    private var foregroundingObserver : NSObjectProtocol?
-    private var backgroundingObserver : NSObjectProtocol?
+    fileprivate var source : DispatchSource!
+    fileprivate var filesChangedObserver : NSObjectProtocol?
+    fileprivate var foregroundingObserver : NSObjectProtocol?
+    fileprivate var backgroundingObserver : NSObjectProtocol?
 
     init()
     {
-        self.filesChangedObserver = NSNotificationCenter.defaultCenter().addObserverForName(WebAppUpdater.AppDocumentDirectoryFilesChangedNotification, object: nil, queue: nil, usingBlock: {(_:NSNotification) -> Void in
-            // we use a low-priority queue here so the file copy operation, which runs on a higher priority queue completes first.
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), {[unowned self] () -> Void in
+        self.filesChangedObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name(rawValue: WebAppUpdater.AppDocumentDirectoryFilesChangedNotification), object: nil, queue: nil, using: {(_:Notification) -> Void in
+            // we use a utility service class queue here so the file copy operation, which runs on a higher service class queue completes first.
+            DispatchQueue.global(qos: DispatchQoS.QoSClass.utility).async(execute: {[unowned self] () -> Void in
                 self.documentsUpdated()
             })
         })
         
-        self.foregroundingObserver = NSNotificationCenter.defaultCenter().addObserverForName(UIApplicationWillEnterForegroundNotification, object: nil, queue: nil, usingBlock: {(_:NSNotification) -> Void in
+        self.foregroundingObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.UIApplicationWillEnterForeground, object: nil, queue: nil, using: {(_:Notification) -> Void in
             self.startWatcher()
             })
         
-        self.backgroundingObserver = NSNotificationCenter.defaultCenter().addObserverForName(UIApplicationDidEnterBackgroundNotification, object: nil, queue: nil, usingBlock: {(_:NSNotification) -> Void in
+        self.backgroundingObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.UIApplicationDidEnterBackground, object: nil, queue: nil, using: {(_:Notification) -> Void in
             self.stopWatcher()
         })
         
@@ -51,17 +51,17 @@ internal class WebAppUpdater
         // cleanup our observer and file watcher.
         if let observer = self.filesChangedObserver
         {
-            NSNotificationCenter.defaultCenter().removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
             self.filesChangedObserver = nil
         }
         if let observer = self.foregroundingObserver
         {
-            NSNotificationCenter.defaultCenter().removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
             self.foregroundingObserver = nil
         }
         if let observer = self.backgroundingObserver
         {
-            NSNotificationCenter.defaultCenter().removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
             self.backgroundingObserver = nil
         }
         stopWatcher()
@@ -69,40 +69,40 @@ internal class WebAppUpdater
     
     func startWatcher()
     {
-        PGSDKLogger.info("Started watching documents directory for replacement WebApp files.")
+        Logger.info("Started watching documents directory for replacement WebApp files.")
         if let documentsUrl = self.getDocumentsUrl()
         {
-            let fileDescriptor = open(documentsUrl.fileSystemRepresentation, O_EVTONLY)
-            let queue = dispatch_queue_create("filewatcher_queue", DISPATCH_QUEUE_SERIAL)
-            self.source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, UInt(fileDescriptor), DISPATCH_VNODE_WRITE, queue);
+            let fileDescriptor = open((documentsUrl as NSURL).fileSystemRepresentation, O_EVTONLY)
+            let queue = DispatchQueue(label: "filewatcher_queue", attributes: [])
+            self.source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fileDescriptor, eventMask: DispatchSource.FileSystemEvent.write, queue: queue) /*Migrator FIXME: Use DispatchSourceFileSystemObject to avoid the cast*/ as! DispatchSource;
             
             // call documentsUpdated if changes are detected.
             // schedule documentsUpdate as next event on the queue to give a chance for
             // any file IO to complete.
-            dispatch_source_set_event_handler(self.source, {()->() in
-                NSNotificationCenter.defaultCenter().postNotificationName(WebAppUpdater.AppDocumentDirectoryFilesChangedNotification, object: nil)
+            self.source.setEventHandler(handler: {()->() in
+                NotificationCenter.default.post(name: Notification.Name(rawValue: WebAppUpdater.AppDocumentDirectoryFilesChangedNotification), object: nil)
             })
             
             // Cleanup when the source is canceled
-            dispatch_source_set_cancel_handler(self.source, {() in
+            self.source.setCancelHandler(handler: {() in
                 
                 close(fileDescriptor)
             })
             
             // everything is setup, start watching
-            dispatch_resume(self.source);
+            self.source.resume();
         }
     }
     
     func stopWatcher()
     {
-        PGSDKLogger.info("Stopped watching documents directory for replacement WebApp files.")
-        dispatch_source_cancel(self.source);
+        Logger.info("Stopped watching documents directory for replacement WebApp files.")
+        self.source.cancel();
     }
     
     func documentsUpdated()
     {
-        PGSDKLogger.info("Changes detected in the Documents directory")
+        Logger.info("Changes detected in the Documents directory")
         
         if let documentsURL = self.getDocumentsUrl()
         {
@@ -121,14 +121,15 @@ internal class WebAppUpdater
     //   includingPropertiesForKeys can effect the metadata resources retreived: xcdoc://?url=developer.apple.com/library/ios/documentation/CoreFoundation/Reference/CFURLRef/index.html#//apple_ref/doc/constant_group/Common_File_System_Resource_Keys
     //   options can be used to specify what items are included: xcdoc://?url=developer.apple.com/library/ios/documentation/Cocoa/Reference/Foundation/Classes/NSFileManager_Class/index.html#//apple_ref/c/tdef/NSDirectoryEnumerationOptions
     //
-    func enumerateItemsInDirectoryURL(URL: NSURL, includingPropertiesForKeys: [String]?, options: NSDirectoryEnumerationOptions, onEachItem: (NSURL)->())
+    func enumerateItemsInDirectoryURL(_ URL: Foundation.URL, includingPropertiesForKeys: [URLResourceKey]?, options: FileManager.DirectoryEnumerationOptions, onEachItem: (Foundation.URL)->())
     {
-        if let urlEnumerator = NSFileManager.defaultManager().enumeratorAtURL(URL, includingPropertiesForKeys: includingPropertiesForKeys, options: options, errorHandler: {(errURL: NSURL, error: NSError)->(Bool) in
-            PGSDKLogger.error("Error enumerating URL: \(errURL) : \(error)")
+        
+        if let urlEnumerator = FileManager.default.enumerator(at: URL, includingPropertiesForKeys: includingPropertiesForKeys, options: options, errorHandler: {(errURL: Foundation.URL, error: Error)->(Bool) in
+            Logger.error("Error enumerating URL: \(errURL) : \(error)")
             return true
         })
         {
-            for case let subURL as NSURL in urlEnumerator
+            for case let subURL as Foundation.URL in urlEnumerator
             {
                 onEachItem(subURL)
             }
@@ -136,17 +137,17 @@ internal class WebAppUpdater
     }
     
     // Helper function. Returns array of subdirectories in provided directory as NSURLs
-    func getSubdirectories(url: NSURL) -> ([NSURL])
+    func getSubdirectories(_ url: URL) -> ([URL])
     {
-        var subDirectories : [NSURL] = []
-        let keys = [NSURLIsDirectoryKey]
+        var subDirectories : [URL] = []
+        let keys = [URLResourceKey.isDirectoryKey]
 
         // get a shallow enumerator for this directory, skipping hidden files
 
-        self.enumerateItemsInDirectoryURL(url, includingPropertiesForKeys: keys, options: [.SkipsSubdirectoryDescendants,.SkipsHiddenFiles]) { (itemURL: NSURL) -> () in
+        self.enumerateItemsInDirectoryURL(url, includingPropertiesForKeys: keys, options: [.skipsSubdirectoryDescendants,.skipsHiddenFiles]) { (itemURL: URL) -> () in
             
             // get the resource property for this item, and check if it's a directory
-            if let resourceValues = try? itemURL.resourceValuesForKeys(keys), isDirectory = resourceValues[NSURLIsDirectoryKey] as? Bool where isDirectory
+            if let resourceValues = try? (itemURL as NSURL).resourceValues(forKeys: keys), let isDirectory = resourceValues[URLResourceKey.isDirectoryKey] as? Bool, isDirectory
             {
                 subDirectories.append(itemURL)
             }
@@ -156,7 +157,7 @@ internal class WebAppUpdater
     }
     
     // Performs the actual file copy.
-    func copyFilesFromURL(fromURL: NSURL, toURL: NSURL)
+    func copyFilesFromURL(_ fromURL: URL, toURL: URL)
     {
         // There are two ways to go with this. We could copy fromURL to toURL entirely. This would be a single quick operation,
         // however, if would completely replace toURL. Any files under toURL not under fromURL, would be deleted.
@@ -164,20 +165,20 @@ internal class WebAppUpdater
         // any missing files will not be deleted. This will allow the web developer to just drop in updates, rather than a complete
         // replacement directory structure.
         
-        print("\(__FUNCTION__): fromURL: \(fromURL.path)  toURL: \(toURL.path)")
+        print("\(#function): fromURL: \(fromURL.path)  toURL: \(toURL.path)")
         
-        let keys = [NSURLIsDirectoryKey]
+        let keys = [URLResourceKey.isDirectoryKey]
         
-        self.enumerateItemsInDirectoryURL(fromURL, includingPropertiesForKeys: keys, options: [.SkipsSubdirectoryDescendants,.SkipsHiddenFiles]) { (itemURL:NSURL) -> () in
+        self.enumerateItemsInDirectoryURL(fromURL, includingPropertiesForKeys: keys, options: [.skipsSubdirectoryDescendants,.skipsHiddenFiles]) { (itemURL:URL) -> () in
 
-            PGSDKLogger.trace("File: \(itemURL.path ?? "")")
+            Logger.trace("File: \(itemURL.path)")
             
-            let targetURL = toURL.URLByAppendingPathComponent(itemURL.lastPathComponent!)
+            let targetURL = toURL.appendingPathComponent(itemURL.lastPathComponent)
 
-            let fileExists = NSFileManager.defaultManager().fileExistsAtPath(targetURL.path!)
+            let fileExists = FileManager.default.fileExists(atPath: targetURL.path)
             
             // inspect each URL to determine if it's a file or directory
-            if let resourceValues = try? itemURL.resourceValuesForKeys(keys), isDirectory = resourceValues[NSURLIsDirectoryKey] as? Bool where isDirectory
+            if let resourceValues = try? (itemURL as NSURL).resourceValues(forKeys: keys), let isDirectory = resourceValues[URLResourceKey.isDirectoryKey] as? Bool, isDirectory
             {
                 // we have a directory....
                 
@@ -185,12 +186,12 @@ internal class WebAppUpdater
                 {
                     do
                     {
-                        PGSDKLogger.trace("Creating directory: \(targetURL.path ?? "")")
-                        try NSFileManager.defaultManager().createDirectoryAtURL(targetURL, withIntermediateDirectories: true, attributes: nil)
+                        Logger.trace("Creating directory: \(targetURL.path)")
+                        try FileManager.default.createDirectory(at: targetURL, withIntermediateDirectories: true, attributes: nil)
                     }
                     catch let error
                     {
-                        PGSDKLogger.error("Error creating subdirectory: \(targetURL) : \(error)")
+                        Logger.error("Error creating subdirectory: \(targetURL) : \(error)")
                     }
                 }
                 
@@ -203,26 +204,26 @@ internal class WebAppUpdater
                 // we have a file -- replace or copy it
                 if fileExists
                 {
-                    PGSDKLogger.trace("Replacing file: \(targetURL.path ?? "") with file: \(itemURL.path ?? "")")
+                    Logger.trace("Replacing file: \(targetURL.path) with file: \(itemURL.path)")
                     do
                     {
-                        try NSFileManager.defaultManager().replaceItemAtURL(targetURL, withItemAtURL: itemURL, backupItemName: nil, options: [.UsingNewMetadataOnly], resultingItemURL: nil)
+                        try FileManager.default.replaceItem(at: targetURL, withItemAt: itemURL, backupItemName: nil, options: [.usingNewMetadataOnly], resultingItemURL: nil)
                     }
                     catch let error
                     {
-                        PGSDKLogger.error("Error replacing file: \(targetURL) : \(error)")
+                        Logger.error("Error replacing file: \(targetURL) : \(error)")
                     }
                 }
                 else
                 {
-                    PGSDKLogger.trace("Copying file: \(itemURL.path ?? "") to file: \(targetURL.path ?? "")")
+                    Logger.trace("Copying file: \(itemURL.path) to file: \(targetURL.path)")
                     do
                     {
-                        try NSFileManager.defaultManager().copyItemAtURL(itemURL, toURL: targetURL)
+                        try FileManager.default.copyItem(at: itemURL, to: targetURL)
                     }
                     catch let error
                     {
-                        PGSDKLogger.error("Error copying file: \(targetURL) : \(error)")
+                        Logger.error("Error copying file: \(targetURL) : \(error)")
                     }
                 }
                 
@@ -233,19 +234,19 @@ internal class WebAppUpdater
     
     
     // Helper function, gets the App's Documents directory, where iTunes file drops are stored.
-    func getDocumentsUrl()->NSURL?
+    func getDocumentsUrl()->URL?
     {
-        return NSFileManager.defaultManager().URLsForDirectory(.DocumentDirectory, inDomains: .UserDomainMask).first
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     }
     
     // Helper function, returns the URL for the given webapp name, if it exists.
-    func getWebAppURL(webAppName : String?) -> (NSURL?)
+    func getWebAppURL(_ webAppName : String?) -> (URL?)
     {
         guard let webAppName = webAppName else {return nil}
         
         if let userURL = PredixMobilityConfiguration.userLocalStorageURL
         {
-            let webappLocation = userURL.URLByAppendingPathComponent("WebApps").URLByAppendingPathComponent(webAppName)
+            let webappLocation = userURL.appendingPathComponent("WebApps").appendingPathComponent(webAppName)
             
             return self.getSubdirectories(webappLocation).first
         }

@@ -24,14 +24,14 @@ Update the target's info properties (Info.plist, or Info tab of the project/targ
 
 At the top of your Container's AppDelegate code add the line:
 
-    var watcher = WebAppUpdater()
+    let watcher = WebAppUpdater()
 
 This will automatically initialize and start the updater whenever your app starts.
 
 ### Step 4:
 
 To use the feature: 
-1. Create a directory containing your WebApp, or the parts of your WebApp you want to replace. This directory should be named the same as you WebApp, as defined in your webapp.json file. 
+1. Create a directory containing your WebApp, or the parts of your WebApp you want to replace. This directory should be named the same as your WebApp, as defined in your webapp.json file. 
 2. When the app is running on device, and connected to your Mac, open iTunes. Navigate to your device, select Apps, and find your container app in the File Sharing secton.
 3. Drag your directory from Finder into the File Sharing section of iTunes. The WebApp files will be updated.
 
