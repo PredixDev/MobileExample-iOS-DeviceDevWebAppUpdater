@@ -20,7 +20,7 @@ import PredixMobileSDK
 
 internal class WebAppUpdater {
     internal static let AppDocumentDirectoryFilesChangedNotification = "AppDocumentDirectoryFilesChangedNotification"
-    fileprivate var source: DispatchSource!
+    fileprivate var source: DispatchSourceFileSystemObject!
     fileprivate var filesChangedObserver: NSObjectProtocol?
     fileprivate var foregroundingObserver: NSObjectProtocol?
     fileprivate var backgroundingObserver: NSObjectProtocol?
@@ -33,11 +33,11 @@ internal class WebAppUpdater {
             })
         })
 
-        self.foregroundingObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.UIApplicationWillEnterForeground, object: nil, queue: nil, using: {(_:Notification) -> Void in
+        self.foregroundingObserver = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: {(_:Notification) -> Void in
             self.startWatcher()
             })
 
-        self.backgroundingObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.UIApplicationDidEnterBackground, object: nil, queue: nil, using: {(_:Notification) -> Void in
+        self.backgroundingObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: {(_:Notification) -> Void in
             self.stopWatcher()
         })
 
@@ -66,7 +66,7 @@ internal class WebAppUpdater {
         if let documentsUrl = self.getDocumentsUrl() {
             let fileDescriptor = open((documentsUrl as NSURL).fileSystemRepresentation, O_EVTONLY)
             let queue = DispatchQueue(label: "filewatcher_queue", attributes: [])
-            self.source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fileDescriptor, eventMask: DispatchSource.FileSystemEvent.write, queue: queue) /*Migrator FIXME: Use DispatchSourceFileSystemObject to avoid the cast*/ as! DispatchSource
+            self.source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fileDescriptor, eventMask: DispatchSource.FileSystemEvent.write, queue: queue)
 
             // call documentsUpdated if changes are detected.
             // schedule documentsUpdate as next event on the queue to give a chance for
